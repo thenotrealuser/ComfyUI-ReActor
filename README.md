@@ -46,12 +46,13 @@
 
 ## What's new in the latest update
 
-<img width="331" height="412" alt="image" src="https://github.com/user-attachments/assets/189fce59-92b1-4594-ad41-7adb3b6caf55" />
+*only on this fork:*
 
-in this fork, you can enable or disable SFW filter
+_in this fork, you can enable or disable SFW filter
 and you can add a new node who can select faces detected before swap!
-and you can select multiple faces to swap too!
+and you can select multiple faces to swap too!_
 
+<img width="331" height="412" alt="image" src="https://github.com/user-attachments/assets/189fce59-92b1-4594-ad41-7adb3b6caf55" />
 
 ### 0.7.0 <sub><sup>ALPHA2</sup></sub>
 
