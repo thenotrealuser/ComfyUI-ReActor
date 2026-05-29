@@ -50,6 +50,7 @@
 
 in this fork, you can enable or disable SFW filter
 and you can add a new node who can select faces detected before swap!
+and you can select multiple faces to swap too!
 
 
 ### 0.7.0 <sub><sup>ALPHA2</sup></sub>
