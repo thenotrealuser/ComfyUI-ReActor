@@ -37,6 +37,7 @@ from scripts.reactor_faceswap import (
 )
 from scripts.reactor_swapper import (
     unload_all_models,
+    sort_by_order,
 )
 from scripts.reactor_logger import logger
 from reactor_utils import (
@@ -65,6 +66,10 @@ import scripts.r_masking.core as core
 import scripts.r_masking.segs as masking_segs
 
 import scripts.reactor_sfw as sfw
+import base64
+import threading
+from aiohttp import web
+from server import PromptServer
 
 
 models_dir = folder_paths.models_dir
@@ -142,6 +147,28 @@ def model_names():
     return {os.path.basename(x): x for x in models}
 
 
+def filter_nsfw_images(pil_images, nsfw_filter=True):
+    if not nsfw_filter:
+        logger.status("NSFW filter disabled by node option.")
+        return pil_images
+
+    logger.status("Checking for any unsafe content...")
+    pbar = progress_bar(len(pil_images))
+    pil_images_sfw = []
+    for img in pil_images:
+        if state.interrupted or model_management.processing_interrupted():
+            logger.status("Interrupted by User")
+            break
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format='PNG')
+        img_byte_arr = img_byte_arr.getvalue()
+        if not sfw.nsfw_image(img_byte_arr, NSFWDET_MODEL_PATH):
+            pil_images_sfw.append(img)
+        pbar.update(1)
+    progress_bar_reset(pbar)
+    return pil_images_sfw
+
+
 class reactor:
     @classmethod
     def INPUT_TYPES(s):
@@ -158,6 +185,7 @@ class reactor:
                 "detect_gender_source": (["no","female","male"], {"default": "no"}),
                 "input_faces_index": ("STRING", {"default": "0"}),
                 "source_faces_index": ("STRING", {"default": "0"}),
+                "nsfw_filter": ("BOOLEAN", {"default": True, "label_off": "OFF", "label_on": "ON"}),
                 "console_log_level": ([0, 1, 2], {"default": 1}),
             },
             "optional": {
@@ -415,7 +443,7 @@ class reactor:
         return result
 
 
-    def execute(self, enabled, input_image, swap_model, detect_gender_source, detect_gender_input, source_faces_index, input_faces_index, console_log_level, face_restore_model,face_restore_visibility, codeformer_weight, facedetection, source_image=None, face_model=None, faces_order=None, face_boost=None):
+    def execute(self, enabled, input_image, swap_model, detect_gender_source, detect_gender_input, source_faces_index, input_faces_index, nsfw_filter, console_log_level, face_restore_model,face_restore_visibility, codeformer_weight, facedetection, source_image=None, face_model=None, faces_order=None, face_boost=None):
 
         device = model_management.get_torch_device()
 
@@ -449,23 +477,7 @@ class reactor:
         script = FaceSwapScript()
         pil_images = batch_tensor_to_pil(input_image)
 
-        # NSFW checker
-        logger.status("Checking for any unsafe content...")
-        pbar = progress_bar(len(pil_images))
-        pil_images_sfw = []
-        for img in pil_images:
-            if state.interrupted or model_management.processing_interrupted():
-                logger.status("Interrupted by User")
-                break
-            img_byte_arr = io.BytesIO()
-            img.save(img_byte_arr, format='PNG')
-            img_byte_arr = img_byte_arr.getvalue()
-            if not sfw.nsfw_image(img_byte_arr, NSFWDET_MODEL_PATH):
-                pil_images_sfw.append(img)
-            pbar.update(1)
-        pil_images = pil_images_sfw
-        # # #
-        progress_bar_reset(pbar)
+        pil_images = filter_nsfw_images(pil_images, nsfw_filter)
 
         if len(pil_images) > 0:
 
@@ -553,6 +565,7 @@ class ReActorPlusOpt:
         self.detect_gender_source = "no"
         self.input_faces_index = "0"
         self.source_faces_index = "0"
+        self.nsfw_filter = True
         self.console_log_level = 1
         self.restore_swapped_only = True
         # self.face_size = 512
@@ -572,6 +585,7 @@ class ReActorPlusOpt:
             self.detect_gender_source = options["detect_gender_source"]
             self.input_faces_index = options["input_faces_index"]
             self.source_faces_index = options["source_faces_index"]
+            self.nsfw_filter = options.get("nsfw_filter", True)
             self.restore_swapped_only = options["restore_swapped_only"]
 
         if face_boost is not None:
@@ -581,7 +595,7 @@ class ReActorPlusOpt:
             self.face_boost_enabled = False
 
         result = reactor.execute(
-            self,enabled,input_image,swap_model,self.detect_gender_source,self.detect_gender_input,self.source_faces_index,self.input_faces_index,self.console_log_level,face_restore_model,face_restore_visibility,codeformer_weight,facedetection,source_image,face_model,self.faces_order, face_boost=face_boost
+            self,enabled,input_image,swap_model,self.detect_gender_source,self.detect_gender_input,self.source_faces_index,self.input_faces_index,self.nsfw_filter,self.console_log_level,face_restore_model,face_restore_visibility,codeformer_weight,facedetection,source_image,face_model,self.faces_order, face_boost=face_boost
         )
 
         return result
@@ -1600,6 +1614,7 @@ class ReActorOptions:
                 ),
                 "source_faces_index": ("STRING", {"default": "0"}),
                 "detect_gender_source": (["no","female","male"], {"default": "no"}),
+                "nsfw_filter": ("BOOLEAN", {"default": True, "label_off": "OFF", "label_on": "ON"}),
                 "console_log_level": ([0, 1, 2], {"default": 1}),
                 "restore_swapped_only": ("BOOLEAN", {"default": True, "label_off": "no", "label_on": "yes"})
             }
@@ -1609,7 +1624,7 @@ class ReActorOptions:
     FUNCTION = "execute"
     CATEGORY = "🌌 ReActor"
 
-    def execute(self,input_faces_order, input_faces_index, detect_gender_input, source_faces_order, source_faces_index, detect_gender_source, console_log_level, restore_swapped_only):
+    def execute(self,input_faces_order, input_faces_index, detect_gender_input, source_faces_order, source_faces_index, detect_gender_source, nsfw_filter, console_log_level, restore_swapped_only):
         options: dict = {
             "input_faces_order": input_faces_order,
             "input_faces_index": input_faces_index,
@@ -1617,6 +1632,7 @@ class ReActorOptions:
             "source_faces_order": source_faces_order,
             "source_faces_index": source_faces_index,
             "detect_gender_source": detect_gender_source,
+            "nsfw_filter": nsfw_filter,
             "console_log_level": console_log_level,
             "restore_swapped_only": restore_swapped_only,
         }
@@ -1724,10 +1740,159 @@ class ReActorFaceSimilarity:
         return (sim_float, sim_text)
 
 
+pending_selections = {}
+
+
+@PromptServer.instance.routes.post("/reactor/select_faces")
+async def select_faces_endpoint(request):
+    try:
+        data = await request.json()
+        node_id = str(data.get("node_id"))
+        selected_indices = data.get("selected_indices", [])
+
+        logger.status(f"[ReActor Interactive] Received selection for node {node_id}: {selected_indices}")
+
+        if node_id in pending_selections:
+            event, _ = pending_selections[node_id]
+            pending_selections[node_id] = (event, selected_indices)
+            event.set()
+            return web.json_response({"status": "ok"})
+
+        return web.json_response({"status": "error", "message": "Node execution not waiting or already finished"}, status=400)
+    except Exception as e:
+        logger.error(f"[ReActor Interactive] Error in selection endpoint: {str(e)}")
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+def crop_face_to_base64(image_np, face_bbox):
+    try:
+        h, w, _ = image_np.shape
+        x1, y1, x2, y2 = map(int, face_bbox)
+        pw = int((x2 - x1) * 0.2)
+        ph = int((y2 - y1) * 0.2)
+
+        nx1 = max(0, x1 - pw)
+        ny1 = max(0, y1 - ph)
+        nx2 = min(w, x2 + pw)
+        ny2 = min(h, y2 + ph)
+
+        crop = image_np[ny1:ny2, nx1:nx2]
+        if crop.size == 0:
+            return ""
+
+        pil_img = Image.fromarray(crop)
+        buffered = io.BytesIO()
+        pil_img.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        return "data:image/png;base64," + img_str
+    except Exception as e:
+        logger.error(f"[ReActor Interactive] Failed to crop face: {str(e)}")
+        return ""
+
+
+class ReActorFaceSwapInteractive:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "enabled": ("BOOLEAN", {"default": True, "label_off": "OFF", "label_on": "ON"}),
+                "input_image": ("IMAGE",),
+                "swap_model": (list(model_names().keys()),),
+                "facedetection": (["retinaface_resnet50", "retinaface_mobile0.25", "YOLOv5l", "YOLOv5n"],),
+                "face_restore_model": (get_model_names(get_restorers),),
+                "face_restore_visibility": ("FLOAT", {"default": 1, "min": 0.1, "max": 1, "step": 0.05}),
+                "codeformer_weight": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1, "step": 0.05}),
+                "detect_gender_input": (["no","female","male"], {"default": "no"}),
+                "detect_gender_source": (["no","female","male"], {"default": "no"}),
+                "source_faces_index": ("STRING", {"default": "0"}),
+                "faces_order": (["left-right","right-left","top-bottom","bottom-top","small-large","large-small"], {"default": "large-small"}),
+                "nsfw_filter": ("BOOLEAN", {"default": True, "label_off": "OFF", "label_on": "ON"}),
+                "console_log_level": ([0, 1, 2], {"default": 1}),
+            },
+            "optional": {
+                "source_image": ("IMAGE",),
+                "face_model": ("FACE_MODEL",),
+                "face_boost": ("FACE_BOOST",),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("IMAGE","FACE_MODEL","IMAGE")
+    RETURN_NAMES = ("SWAPPED_IMAGE","FACE_MODEL","ORIGINAL_IMAGE")
+    FUNCTION = "execute"
+    CATEGORY = "ðŸŒŒ ReActor"
+
+    def execute(self, enabled, input_image, swap_model, facedetection, face_restore_model, face_restore_visibility, codeformer_weight, detect_gender_input, detect_gender_source, source_faces_index, faces_order, nsfw_filter, console_log_level, unique_id, source_image=None, face_model=None, face_boost=None):
+        if not enabled:
+            return (input_image, face_model, input_image)
+
+        pil_images = batch_tensor_to_pil(input_image)
+        if len(pil_images) == 0:
+            return (input_image, face_model, input_image)
+
+        first_img = pil_images[0]
+        first_img_rgb = np.array(first_img)
+        first_img_bgr = cv2.cvtColor(first_img_rgb, cv2.COLOR_RGB2BGR)
+
+        faces = analyze_faces(first_img_bgr)
+
+        if len(faces) == 0:
+            logger.status("[ReActor Interactive] No faces detected in the image. Continuing without selection.")
+            reactor_instance = reactor()
+            return reactor_instance.execute(enabled, input_image, swap_model, detect_gender_source, detect_gender_input, source_faces_index, "0", nsfw_filter, console_log_level, face_restore_model, face_restore_visibility, codeformer_weight, facedetection, source_image, face_model, [faces_order, "large-small"], face_boost=face_boost)
+
+        faces = sort_by_order(faces, faces_order)
+
+        faces_data = []
+        for i, face in enumerate(faces):
+            faces_data.append({
+                "index": i,
+                "gender": str(face.sex) if hasattr(face, "sex") else (str(face.gender) if hasattr(face, "gender") else "Unknown"),
+                "age": int(face.age) if hasattr(face, "age") else 0,
+                "image": crop_face_to_base64(first_img_rgb, face.bbox)
+            })
+
+        event = threading.Event()
+        node_id = str(unique_id)
+        pending_selections[node_id] = (event, None)
+
+        logger.status(f"[ReActor Interactive] Waiting for user selection on node {node_id}...")
+        PromptServer.instance.send_sync("reactor_select_faces", {"node_id": node_id, "faces": faces_data})
+
+        timeout = 300
+        waited = 0.0
+        while not event.is_set():
+            if state.interrupted or model_management.processing_interrupted():
+                logger.status("[ReActor Interactive] Execution interrupted by user.")
+                if node_id in pending_selections:
+                    del pending_selections[node_id]
+                return (input_image, face_model, input_image)
+            if waited >= timeout:
+                logger.status("[ReActor Interactive] Timeout waiting for selection. Continuing with no faces swapped.")
+                break
+            event.wait(timeout=0.5)
+            waited += 0.5
+
+        selected_indices = None
+        if node_id in pending_selections:
+            _, selected_indices = pending_selections.pop(node_id)
+
+        if selected_indices is None or len(selected_indices) == 0:
+            logger.status("[ReActor Interactive] No faces selected or operation cancelled. Returning original image.")
+            return (input_image, face_model, input_image)
+
+        input_faces_index_str = ",".join(map(str, selected_indices))
+        logger.status(f"[ReActor Interactive] Proceeding with face swap for indices: {input_faces_index_str}")
+
+        reactor_instance = reactor()
+        return reactor_instance.execute(enabled, input_image, swap_model, detect_gender_source, detect_gender_input, source_faces_index, input_faces_index_str, nsfw_filter, console_log_level, face_restore_model, face_restore_visibility, codeformer_weight, facedetection, source_image, face_model, [faces_order, "large-small"], face_boost=face_boost)
+
+
 NODE_CLASS_MAPPINGS = {
     # --- MAIN NODES ---
     "ReActorFaceSwap": reactor,
     "ReActorFaceSwapOpt": ReActorPlusOpt,
+    "ReActorFaceSwapInteractive": ReActorFaceSwapInteractive,
     "ReActorOptions": ReActorOptions,
     "ReActorFaceBoost": ReActorFaceBoost,
     "ReActorMaskHelper": MaskHelper,
@@ -1750,6 +1915,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     # --- MAIN NODES ---
     "ReActorFaceSwap": "ReActor 🌌 Fast Face Swap",
     "ReActorFaceSwapOpt": "ReActor 🌌 Fast Face Swap [OPTIONS]",
+    "ReActorFaceSwapInteractive": "ReActor 🌌 Fast Face Swap [INTERACTIVE]",
     "ReActorOptions": "ReActor 🌌 Options",
     "ReActorFaceBoost": "ReActor 🌌 Face Booster",
     "ReActorMaskHelper": "ReActor 🌌 Masking Helper",
