@@ -25,7 +25,7 @@
 
   English | [Русский](/README_RU.md)
 
-# ReActor Nodes for ComfyUI<br><sub><sup>-=SFW-Friendly=-</sup></sub>
+# ReActor Nodes for ComfyUI<br><sub><sup>-=SFW-Friendly with filter to enable or disable=-</sup></sub>
 
 </div>
 
@@ -45,6 +45,12 @@
 <a name="latestupdate">
 
 ## What's new in the latest update
+
+<img width="331" height="412" alt="image" src="https://github.com/user-attachments/assets/189fce59-92b1-4594-ad41-7adb3b6caf55" />
+
+in this fork, you can enable or disable SFW filter
+and you can add a new node who can select faces detected before swap!
+
 
 ### 0.7.0 <sub><sup>ALPHA2</sup></sub>
 
