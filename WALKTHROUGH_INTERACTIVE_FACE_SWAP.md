@@ -92,7 +92,7 @@ The local fix:
 
 - Uninstall plain `onnxruntime`.
 - Install `onnxruntime-gpu`.
-- Preload ONNXRuntime CUDA/cuDNN DLLs with `onnxruntime.preload_dlls(directory="")` before creating CUDA sessions.
+- Do not preload ONNXRuntime CUDA/cuDNN DLLs in this ComfyUI setup. PyTorch CUDA 13 is imported by ComfyUI and provides the loaded CUDA/cuDNN DLLs. Forcing `onnxruntime.preload_dlls(...)` can load incompatible bundled NVIDIA cuDNN DLLs and produce Windows entry-point errors.
 
 Expected provider check:
 

@@ -215,11 +215,6 @@ def get_ort_session():
 def set_ort_session(model_path, providers) -> Any:
     global ORT_SESSION
     onnxruntime.set_default_logger_severity(3)
-    if "CUDAExecutionProvider" in providers and hasattr(onnxruntime, "preload_dlls"):
-        try:
-            onnxruntime.preload_dlls(directory="")
-        except Exception:
-            pass
     ORT_SESSION = onnxruntime.InferenceSession(model_path, providers=providers)
     return ORT_SESSION
 

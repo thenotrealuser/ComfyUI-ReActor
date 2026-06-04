@@ -17,7 +17,7 @@
 ## 2026-06-04
 
 - Fixed ONNXRuntime GPU initialization for ReActor analysis and swap/restore ONNX sessions.
-- Added automatic `onnxruntime.preload_dlls(directory="")` before CUDA ONNX sessions are created.
 - Updated `install.py` to remove the CPU `onnxruntime` package before installing `onnxruntime-gpu` on CUDA systems.
 - Updated `install.py` to install `onnxruntime-gpu` with `--no-deps` so it does not unexpectedly upgrade shared packages like `numpy` and `protobuf`.
 - Verified `CUDAExecutionProvider` is available and used for ONNX sessions after reinstalling `onnxruntime-gpu`.
+- Avoided `onnxruntime.preload_dlls(...)` because this ComfyUI environment already loads CUDA/cuDNN through PyTorch CUDA 13, and preloading ONNXRuntime's bundled NVIDIA cuDNN DLLs can trigger Windows entry-point errors.

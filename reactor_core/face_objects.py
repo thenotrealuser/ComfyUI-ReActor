@@ -2,14 +2,6 @@ import numpy as np
 import onnxruntime as ort
 import os
 
-
-def preload_ort_cuda_dlls():
-    if hasattr(ort, "preload_dlls"):
-        try:
-            ort.preload_dlls(directory="")
-        except Exception:
-            pass
-
 class Face(dict):
     """
     Класс-хранилище данных о лице. 
@@ -71,9 +63,6 @@ class BaseONNXModel:
         
         if not os.path.exists(self.model_file):
             raise FileNotFoundError(f"Model file not found: {self.model_file}")
-
-        if "CUDAExecutionProvider" in self.providers:
-            preload_ort_cuda_dlls()
 
         self.session = ort.InferenceSession(self.model_file, providers=self.providers)
         
