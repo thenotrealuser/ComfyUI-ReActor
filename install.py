@@ -28,6 +28,9 @@ model_path = os.path.join(models_dir_path, model_name)
 def run_pip(*args):
     subprocess.run([sys.executable, "-m", "pip", "install", "--no-warn-script-location", *args])
 
+def run_pip_uninstall(*args):
+    subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", *args])
+
 def is_installed (
         package: str, version: str = None, strict: bool = True
 ):
@@ -74,13 +77,19 @@ with open(req_file) as file:
         if cuda_version is not None and float(cuda_version)>=12 and torch.torch_version.__version__ <= "2.2.0": # CU12.x and torch<=2.2.0
             print(f"Torch: {torch.torch_version.__version__}")
             if not is_installed(ort,"1.17.0",False):
-                run_pip(ort,"--extra-index-url", "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/")
+                run_pip_uninstall("onnxruntime")
+                run_pip(ort,"--no-deps","--extra-index-url", "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/")
         elif cuda_version is not None and float(cuda_version)>=12 and torch.torch_version.__version__ >= "2.4.0" : # CU12.x and latest torch
             print(f"Torch: {torch.torch_version.__version__}")
             if not is_installed(ort,"1.20.1",False): # latest ort-gpu
-                run_pip(ort,"-U")
+                run_pip_uninstall("onnxruntime")
+                run_pip(ort,"-U","--no-deps")
         elif not is_installed(ort,"1.16.1",False):
-            run_pip(ort, "-U")
+            if ort == "onnxruntime-gpu":
+                run_pip_uninstall("onnxruntime")
+                run_pip(ort, "-U", "--no-deps")
+            else:
+                run_pip(ort, "-U")
     except Exception as e:
         print(e)
         print(f"Warning: Failed to install {ort}, ReActor will not work.")

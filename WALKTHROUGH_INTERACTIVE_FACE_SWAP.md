@@ -75,9 +75,38 @@ PromptServer.instance.send_sync("reactor_select_faces", {...})
 
 - `__init__.py`
 - `nodes.py`
+- `install.py`
+- `reactor_core/face_objects.py`
+- `reactor_utils.py`
 - `web/reactor_interactive.js`
 - `CHANGELOG.md`
 - `WALKTHROUGH_INTERACTIVE_FACE_SWAP.md`
+
+## ONNXRuntime GPU Notes
+
+ReActor's face analysis and ONNX face swap models use ONNXRuntime, not PyTorch directly.
+
+For GPU execution, `onnxruntime-gpu` must provide `CUDAExecutionProvider`. Do not install the plain CPU `onnxruntime` package over it, because both packages provide the same `onnxruntime` Python module and the CPU package can overwrite the active runtime.
+
+The local fix:
+
+- Uninstall plain `onnxruntime`.
+- Install `onnxruntime-gpu`.
+- Preload ONNXRuntime CUDA/cuDNN DLLs with `onnxruntime.preload_dlls(directory="")` before creating CUDA sessions.
+
+Expected provider check:
+
+```text
+['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
+```
+
+Expected session provider check:
+
+```text
+['CUDAExecutionProvider', 'CPUExecutionProvider']
+```
+
+ONNXRuntime may still report that some shape-related nodes are assigned to CPU. That is normal and does not mean the main face analysis/swap inference is running on CPU.
 
 ## Test Steps
 
