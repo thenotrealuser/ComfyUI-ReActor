@@ -3,6 +3,76 @@ import { api } from "../../scripts/api.js";
 
 const style = document.createElement("style");
 style.textContent = `
+    .reactor-interactive-container {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        box-sizing: border-box;
+        gap: 6px;
+    }
+
+    .reactor-preview-wrapper {
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: #111;
+        border: 1px solid #333;
+        border-radius: 6px;
+        height: 220px;
+        width: 100%;
+        overflow: hidden;
+    }
+
+    .reactor-preview-container {
+        position: relative;
+        display: inline-block;
+        height: 100%;
+    }
+
+    .reactor-preview-image {
+        display: block;
+        height: 100%;
+        width: auto;
+        object-fit: contain;
+    }
+
+    .reactor-face-box {
+        position: absolute;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        box-sizing: border-box;
+        cursor: pointer;
+        transition: border-color 0.2s, background-color 0.2s;
+        border-radius: 4px;
+        z-index: 5;
+    }
+
+    .reactor-face-box:hover,
+    .reactor-face-box.hover {
+        border-color: #ffd700;
+        background-color: rgba(255, 215, 0, 0.15);
+        z-index: 10;
+    }
+
+    .reactor-face-box.selected {
+        border-color: #58d26d;
+        background-color: rgba(88, 210, 109, 0.2);
+    }
+
+    .reactor-face-box span {
+        background: rgba(0, 0, 0, 0.85);
+        color: #fff;
+        font-size: 10px;
+        font-weight: bold;
+        left: 0;
+        top: 0;
+        line-height: 1;
+        padding: 2px 4px;
+        position: absolute;
+        border-bottom-right-radius: 4px;
+        pointer-events: none;
+    }
+
     .reactor-inline-selector {
         align-items: center;
         box-sizing: border-box;
@@ -45,11 +115,12 @@ style.textContent = `
     }
 
     .reactor-inline-face:hover,
-    .reactor-inline-face.selected {
-        border-color: #58d26d;
+    .reactor-inline-face.hover {
+        border-color: #ffd700;
     }
 
     .reactor-inline-face.selected {
+        border-color: #58d26d;
         outline: 1px solid #58d26d;
     }
 
@@ -165,19 +236,63 @@ async function submitSelection(node, nodeId, indices) {
     }
 }
 
-function showInlineSelector(nodeId, faces) {
-    const node = getNodeById(nodeId);
+function showInlineSelector({ node_id, faces, full_image, image_width, image_height }) {
+    const node = getNodeById(node_id);
     if (!node) {
-        console.error("[ReActor Interactive] Could not find node", nodeId);
+        console.error("[ReActor Interactive] Could not find node", node_id);
         return;
     }
 
     removeSelector(node);
 
     const root = document.createElement("div");
-    root.className = "reactor-inline-selector";
+    root.className = "reactor-interactive-container";
 
+    const boxElements = {};
+    const thumbButtons = {};
     const selectedIndices = [];
+
+    // 1. Create Preview Image & Bounding Box Overlays
+    if (full_image && image_width > 0 && image_height > 0) {
+        const previewWrapper = document.createElement("div");
+        previewWrapper.className = "reactor-preview-wrapper";
+
+        const previewContainer = document.createElement("div");
+        previewContainer.className = "reactor-preview-container";
+
+        const img = document.createElement("img");
+        img.className = "reactor-preview-image";
+        img.src = full_image;
+        img.alt = "Full Scene Preview";
+        previewContainer.appendChild(img);
+
+        faces.forEach((face) => {
+            if (face.bbox) {
+                const [x1, y1, x2, y2] = face.bbox;
+                const box = document.createElement("div");
+                box.className = "reactor-face-box";
+                box.style.left = `${(x1 / image_width) * 100}%`;
+                box.style.top = `${(y1 / image_height) * 100}%`;
+                box.style.width = `${((x2 - x1) / image_width) * 100}%`;
+                box.style.height = `${((y2 - y1) / image_height) * 100}%`;
+                box.title = `Face ${face.index} (${face.gender}, Age ${face.age})`;
+
+                const boxLabel = document.createElement("span");
+                boxLabel.textContent = String(face.index);
+                box.appendChild(boxLabel);
+
+                previewContainer.appendChild(box);
+                boxElements[face.index] = box;
+            }
+        });
+
+        previewWrapper.appendChild(previewContainer);
+        root.appendChild(previewWrapper);
+    }
+
+    // 2. Create Row for Options, Thumbnails and Buttons
+    const selectorRow = document.createElement("div");
+    selectorRow.className = "reactor-inline-selector";
 
     const options = document.createElement("label");
     options.className = "reactor-inline-options";
@@ -186,31 +301,39 @@ function showInlineSelector(nodeId, faces) {
     multi.type = "checkbox";
     options.appendChild(multi);
     options.appendChild(document.createTextNode("Multi"));
-    root.appendChild(options);
+    selectorRow.appendChild(options);
 
     const swap = document.createElement("button");
     swap.className = "reactor-inline-swap";
     swap.textContent = "Swap";
     swap.type = "button";
     swap.addEventListener("click", () => {
-        submitSelection(node, nodeId, selectedIndices);
+        submitSelection(node, node_id, selectedIndices);
     });
 
-    function setSelected(button, index) {
-        const pos = selectedIndices.indexOf(index);
-        if (pos === -1) {
-            selectedIndices.push(index);
-            button.classList.add("selected");
+    function toggleSelect(index) {
+        const button = thumbButtons[index];
+        const box = boxElements[index];
+        if (multi.checked) {
+            const pos = selectedIndices.indexOf(index);
+            if (pos === -1) {
+                selectedIndices.push(index);
+                button?.classList.add("selected");
+                box?.classList.add("selected");
+            } else {
+                selectedIndices.splice(pos, 1);
+                button?.classList.remove("selected");
+                box?.classList.remove("selected");
+            }
         } else {
-            selectedIndices.splice(pos, 1);
-            button.classList.remove("selected");
+            submitSelection(node, node_id, [index]);
         }
     }
 
     multi.addEventListener("change", () => {
         selectedIndices.length = 0;
-        root.querySelectorAll(".reactor-inline-face.selected").forEach((button) => {
-            button.classList.remove("selected");
+        root.querySelectorAll(".reactor-inline-face.selected, .reactor-face-box.selected").forEach((el) => {
+            el.classList.remove("selected");
         });
         swap.classList.toggle("visible", multi.checked);
     });
@@ -218,7 +341,7 @@ function showInlineSelector(nodeId, faces) {
     faces.forEach((face) => {
         const button = document.createElement("button");
         button.className = "reactor-inline-face";
-        button.title = `Swap face ${face.index}`;
+        button.title = `Swap face ${face.index} (${face.gender}, Age ${face.age})`;
         button.type = "button";
 
         const image = document.createElement("img");
@@ -230,37 +353,63 @@ function showInlineSelector(nodeId, faces) {
         label.textContent = String(face.index);
         button.appendChild(label);
 
+        thumbButtons[face.index] = button;
+
         button.addEventListener("click", () => {
-            if (multi.checked) {
-                setSelected(button, face.index);
-            } else {
-                submitSelection(node, nodeId, [face.index]);
-            }
+            toggleSelect(face.index);
         });
 
-        root.appendChild(button);
+        // Setup hover linkage
+        button.addEventListener("mouseenter", () => {
+            button.classList.add("hover");
+            boxElements[face.index]?.classList.add("hover");
+        });
+        button.addEventListener("mouseleave", () => {
+            button.classList.remove("hover");
+            boxElements[face.index]?.classList.remove("hover");
+        });
+
+        if (boxElements[face.index]) {
+            const box = boxElements[face.index];
+            box.addEventListener("click", () => {
+                toggleSelect(face.index);
+            });
+            box.addEventListener("mouseenter", () => {
+                box.classList.add("hover");
+                button.classList.add("hover");
+            });
+            box.addEventListener("mouseleave", () => {
+                box.classList.remove("hover");
+                button.classList.remove("hover");
+            });
+        }
+
+        selectorRow.appendChild(button);
     });
 
-    root.appendChild(swap);
+    selectorRow.appendChild(swap);
 
     const skip = document.createElement("button");
     skip.className = "reactor-inline-skip";
     skip.textContent = "Skip";
     skip.type = "button";
     skip.addEventListener("click", () => {
-        submitSelection(node, nodeId, []);
+        submitSelection(node, node_id, []);
     });
-    root.appendChild(skip);
+    selectorRow.appendChild(skip);
 
+    root.appendChild(selectorRow);
+
+    const widgetHeight = full_image ? 300 : 78;
     const widget = node.addDOMWidget("reactor_face_selector", "reactor_face_selector", root, {
-        getMinHeight: () => 78,
-        getMaxHeight: () => 78,
+        getMinHeight: () => widgetHeight,
+        getMaxHeight: () => widgetHeight,
         getValue: () => "",
         setValue: () => {},
     });
     widget.serialize = false;
 
-    const minHeight = 330;
+    const minHeight = full_image ? 550 : 330;
     if (node.size[1] < minHeight) {
         node.setSize([node.size[0], minHeight]);
     }
@@ -272,8 +421,7 @@ app.registerExtension({
     name: "ReActor.InteractiveFaceSwap",
     async setup() {
         api.addEventListener("reactor_select_faces", async ({ detail }) => {
-            const { node_id, faces } = detail;
-            showInlineSelector(node_id, faces);
+            showInlineSelector(detail);
         });
     },
 });

@@ -1790,6 +1790,28 @@ def crop_face_to_base64(image_np, face_bbox):
         return ""
 
 
+def image_to_base64(image_np, max_size=768):
+    try:
+        pil_img = Image.fromarray(image_np)
+        w, h = pil_img.size
+        if max(w, h) > max_size:
+            if w > h:
+                new_w = max_size
+                new_h = int(h * (max_size / w))
+            else:
+                new_h = max_size
+                new_w = int(w * (max_size / h))
+            pil_img = pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        
+        buffered = io.BytesIO()
+        pil_img.save(buffered, format="JPEG", quality=85)
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        return "data:image/jpeg;base64," + img_str
+    except Exception as e:
+        logger.error(f"[ReActor Interactive] Failed to encode full image: {str(e)}")
+        return ""
+
+
 class ReActorFaceSwapInteractive:
     @classmethod
     def INPUT_TYPES(s):
@@ -1849,7 +1871,8 @@ class ReActorFaceSwapInteractive:
                 "index": i,
                 "gender": str(face.sex) if hasattr(face, "sex") else (str(face.gender) if hasattr(face, "gender") else "Unknown"),
                 "age": int(face.age) if hasattr(face, "age") else 0,
-                "image": crop_face_to_base64(first_img_rgb, face.bbox)
+                "image": crop_face_to_base64(first_img_rgb, face.bbox),
+                "bbox": [int(face.bbox[0]), int(face.bbox[1]), int(face.bbox[2]), int(face.bbox[3])]
             })
 
         event = threading.Event()
@@ -1857,7 +1880,13 @@ class ReActorFaceSwapInteractive:
         pending_selections[node_id] = (event, None)
 
         logger.status(f"[ReActor Interactive] Waiting for user selection on node {node_id}...")
-        PromptServer.instance.send_sync("reactor_select_faces", {"node_id": node_id, "faces": faces_data})
+        PromptServer.instance.send_sync("reactor_select_faces", {
+            "node_id": node_id,
+            "faces": faces_data,
+            "full_image": image_to_base64(first_img_rgb),
+            "image_width": first_img_rgb.shape[1],
+            "image_height": first_img_rgb.shape[0]
+        })
 
         timeout = 300
         waited = 0.0
