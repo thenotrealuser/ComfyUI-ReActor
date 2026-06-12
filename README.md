@@ -51,8 +51,10 @@
 _in this fork, you can enable or disable SFW filter
 and you can add a new node who can select faces detected before swap!
 and you can select multiple faces to swap too!_
+and now you can select faces by numbers with a preview!
 
-<img width="331" height="412" alt="image" src="https://github.com/user-attachments/assets/189fce59-92b1-4594-ad41-7adb3b6caf55" />
+<img width="369" height="670" alt="Captura de tela 2026-06-12 115957" src="https://github.com/user-attachments/assets/28a2d7c3-4c46-49f7-bdac-3f609fae3a84" />
+
 
 ### 0.7.0 <sub><sup>ALPHA2</sup></sub>
 
