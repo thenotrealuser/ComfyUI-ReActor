@@ -1741,6 +1741,17 @@ class ReActorFaceSimilarity:
 
 
 pending_selections = {}
+pending_selection_payloads = {}
+
+
+@PromptServer.instance.routes.get("/reactor/pending_selections")
+async def pending_selections_endpoint(request):
+    selections = []
+    for node_id, payload in list(pending_selection_payloads.items()):
+        if node_id in pending_selections:
+            selections.append(payload)
+
+    return web.json_response({"status": "ok", "selections": selections})
 
 
 @PromptServer.instance.routes.post("/reactor/select_faces")
@@ -1755,6 +1766,7 @@ async def select_faces_endpoint(request):
         if node_id in pending_selections:
             event, _ = pending_selections[node_id]
             pending_selections[node_id] = (event, selected_indices)
+            pending_selection_payloads.pop(node_id, None)
             event.set()
             return web.json_response({"status": "ok"})
 
@@ -1879,14 +1891,17 @@ class ReActorFaceSwapInteractive:
         node_id = str(unique_id)
         pending_selections[node_id] = (event, None)
 
-        logger.status(f"[ReActor Interactive] Waiting for user selection on node {node_id}...")
-        PromptServer.instance.send_sync("reactor_select_faces", {
+        selection_payload = {
             "node_id": node_id,
             "faces": faces_data,
             "full_image": image_to_base64(first_img_rgb),
             "image_width": first_img_rgb.shape[1],
             "image_height": first_img_rgb.shape[0]
-        })
+        }
+        pending_selection_payloads[node_id] = selection_payload
+
+        logger.status(f"[ReActor Interactive] Waiting for user selection on node {node_id}...")
+        PromptServer.instance.send_sync("reactor_select_faces", selection_payload)
 
         timeout = 300
         waited = 0.0
@@ -1895,6 +1910,7 @@ class ReActorFaceSwapInteractive:
                 logger.status("[ReActor Interactive] Execution interrupted by user.")
                 if node_id in pending_selections:
                     del pending_selections[node_id]
+                pending_selection_payloads.pop(node_id, None)
                 return (input_image, face_model, input_image)
             if waited >= timeout:
                 logger.status("[ReActor Interactive] Timeout waiting for selection. Continuing with no faces swapped.")
@@ -1905,6 +1921,7 @@ class ReActorFaceSwapInteractive:
         selected_indices = None
         if node_id in pending_selections:
             _, selected_indices = pending_selections.pop(node_id)
+        pending_selection_payloads.pop(node_id, None)
 
         if selected_indices is None or len(selected_indices) == 0:
             logger.status("[ReActor Interactive] No faces selected or operation cancelled. Returning original image.")

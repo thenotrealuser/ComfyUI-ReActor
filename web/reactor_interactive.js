@@ -197,9 +197,15 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
+const pendingSelectors = new Map();
+
 function getNodeById(nodeId) {
     const numericId = Number(nodeId);
     return app.graph?.getNodeById?.(numericId) || app.graph?.getNodeById?.(nodeId);
+}
+
+function hasSelector(node) {
+    return node?.widgets?.some((widget) => widget.name === "reactor_face_selector");
 }
 
 function removeSelector(node) {
@@ -236,11 +242,13 @@ async function submitSelection(node, nodeId, indices) {
     }
 }
 
-function showInlineSelector({ node_id, faces, full_image, image_width, image_height }) {
+function showInlineSelector({ node_id, faces, full_image, image_width, image_height }, replaceExisting = false) {
     const node = getNodeById(node_id);
     if (!node) {
-        console.error("[ReActor Interactive] Could not find node", node_id);
-        return;
+        return false;
+    }
+    if (hasSelector(node) && !replaceExisting) {
+        return true;
     }
 
     removeSelector(node);
@@ -415,13 +423,53 @@ function showInlineSelector({ node_id, faces, full_image, image_width, image_hei
     }
 
     app.canvas.setDirty(true, true);
+    return true;
+}
+
+function retryPendingSelectors() {
+    for (const [nodeId, pending] of pendingSelectors) {
+        if (showInlineSelector(pending.detail, pending.replaceExisting)) {
+            pendingSelectors.delete(nodeId);
+        }
+    }
+}
+
+async function recoverPendingSelectors() {
+    try {
+        const response = await api.fetchApi("/reactor/pending_selections");
+        if (!response.ok) {
+            return;
+        }
+        const result = await response.json();
+        for (const detail of result.selections || []) {
+            const nodeId = String(detail.node_id);
+            if (!pendingSelectors.has(nodeId)) {
+                pendingSelectors.set(nodeId, { detail, replaceExisting: false });
+            }
+        }
+        retryPendingSelectors();
+    } catch (error) {
+        console.error("[ReActor Interactive] Could not recover pending face selections", error);
+    }
 }
 
 app.registerExtension({
     name: "ReActor.InteractiveFaceSwap",
     async setup() {
         api.addEventListener("reactor_select_faces", async ({ detail }) => {
-            showInlineSelector(detail);
+            pendingSelectors.set(String(detail.node_id), { detail, replaceExisting: true });
+            retryPendingSelectors();
         });
+
+        api.addEventListener("reconnected", recoverPendingSelectors);
+        window.addEventListener("focus", recoverPendingSelectors);
+        document.addEventListener("visibilitychange", () => {
+            if (!document.hidden) {
+                recoverPendingSelectors();
+            }
+        });
+
+        window.setInterval(retryPendingSelectors, 500);
+        await recoverPendingSelectors();
     },
 });
