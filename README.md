@@ -54,8 +54,7 @@
 - Optional SFW/NSFW filter toggle.
 - Improved ONNXRuntime GPU conflict handling on CUDA installations.
 
-<img width="369" height="670" alt="Captura de tela 2026-06-12 115957" src="https://github.com/user-attachments/assets/28a2d7c3-4c46-49f7-bdac-3f609fae3a84" />
-
+(imagem aqui)
 
 ### 0.7.0 <sub><sup>ALPHA3</sup></sub>
 
