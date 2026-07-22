@@ -16,6 +16,7 @@ from PIL import Image
 import io
 from scipy import stats
 from reactor_core.face_objects import Face
+from reactor_core.expression_restorer import restore_expressions, unload_expression_restorer
 from segment_anything import sam_model_registry
 
 from r_modules.processing import ProcessingImg2Img
@@ -187,6 +188,9 @@ class reactor:
                 "source_faces_index": ("STRING", {"default": "0"}),
                 "nsfw_filter": ("BOOLEAN", {"default": True, "label_off": "OFF", "label_on": "ON"}),
                 "console_log_level": ([0, 1, 2], {"default": 1}),
+                "expression_restore": ("BOOLEAN", {"default": False, "label_off": "OFF", "label_on": "ON"}),
+                "expression_restore_strength": ("INT", {"default": 80, "min": 0, "max": 100, "step": 1}),
+                "expression_restore_areas": (["all", "upper-face", "lower-face"], {"default": "all"}),
             },
             "optional": {
                 "source_image": ("IMAGE",),
@@ -443,7 +447,7 @@ class reactor:
         return result
 
 
-    def execute(self, enabled, input_image, swap_model, detect_gender_source, detect_gender_input, source_faces_index, input_faces_index, nsfw_filter, console_log_level, face_restore_model,face_restore_visibility, codeformer_weight, facedetection, source_image=None, face_model=None, faces_order=None, face_boost=None):
+    def execute(self, enabled, input_image, swap_model, detect_gender_source, detect_gender_input, source_faces_index, input_faces_index, nsfw_filter, console_log_level, face_restore_model,face_restore_visibility, codeformer_weight, facedetection, source_image=None, face_model=None, faces_order=None, face_boost=None, expression_restore=False, expression_restore_strength=80, expression_restore_areas="all"):
 
         device = model_management.get_torch_device()
 
@@ -480,6 +484,7 @@ class reactor:
         pil_images = filter_nsfw_images(pil_images, nsfw_filter)
 
         if len(pil_images) > 0:
+            original_pil_images = [image.copy() for image in pil_images]
 
             if source_image is not None:
                 source = tensor_to_pil(source_image)
@@ -507,6 +512,17 @@ class reactor:
                 codeformer_weight=self.boost_cf_weight,
                 interpolation=self.interpolation,
             )
+            if expression_restore and not model_management.processing_interrupted():
+                logger.status("[ReActor] Restoring target expression with LivePortrait")
+                restored_face_indices = ",".join(map(str, sorted(set(p.swapped_indexes))))
+                p.init_images = restore_expressions(
+                    original_pil_images,
+                    p.init_images,
+                    restored_face_indices,
+                    faces_order[0],
+                    expression_restore_strength,
+                    expression_restore_areas,
+                )
             result = batched_pil_to_tensor(p.init_images)
             # print(f"bbox={p.bbox}")
             if len(p.bbox) > 0:
@@ -544,6 +560,9 @@ class ReActorPlusOpt:
                 "face_restore_model": (get_model_names(get_restorers),),
                 "face_restore_visibility": ("FLOAT", {"default": 1, "min": 0.1, "max": 1, "step": 0.05}),
                 "codeformer_weight": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1, "step": 0.05}),
+                "expression_restore": ("BOOLEAN", {"default": False, "label_off": "OFF", "label_on": "ON"}),
+                "expression_restore_strength": ("INT", {"default": 80, "min": 0, "max": 100, "step": 1}),
+                "expression_restore_areas": (["all", "upper-face", "lower-face"], {"default": "all"}),
             },
             "optional": {
                 "source_image": ("IMAGE",),
@@ -576,7 +595,7 @@ class ReActorPlusOpt:
         self.boost_model_visibility = 1
         self.boost_cf_weight = 0.5
 
-    def execute(self, enabled, input_image, swap_model, facedetection, face_restore_model, face_restore_visibility, codeformer_weight, source_image=None, face_model=None, options=None, face_boost=None):
+    def execute(self, enabled, input_image, swap_model, facedetection, face_restore_model, face_restore_visibility, codeformer_weight, source_image=None, face_model=None, options=None, face_boost=None, expression_restore=False, expression_restore_strength=80, expression_restore_areas="all"):
 
         if options is not None:
             self.faces_order = [options["input_faces_order"], options["source_faces_order"]]
@@ -595,7 +614,7 @@ class ReActorPlusOpt:
             self.face_boost_enabled = False
 
         result = reactor.execute(
-            self,enabled,input_image,swap_model,self.detect_gender_source,self.detect_gender_input,self.source_faces_index,self.input_faces_index,self.nsfw_filter,self.console_log_level,face_restore_model,face_restore_visibility,codeformer_weight,facedetection,source_image,face_model,self.faces_order, face_boost=face_boost
+            self,enabled,input_image,swap_model,self.detect_gender_source,self.detect_gender_input,self.source_faces_index,self.input_faces_index,self.nsfw_filter,self.console_log_level,face_restore_model,face_restore_visibility,codeformer_weight,facedetection,source_image,face_model,self.faces_order,face_boost=face_boost,expression_restore=expression_restore,expression_restore_strength=expression_restore_strength,expression_restore_areas=expression_restore_areas
         )
 
         return result
@@ -1684,6 +1703,7 @@ class ReActorUnload:
 
     def execute(self, trigger):
         unload_all_models()
+        unload_expression_restorer()
         return (trigger,)
 
 
@@ -1842,6 +1862,9 @@ class ReActorFaceSwapInteractive:
                 "faces_order": (["left-right","right-left","top-bottom","bottom-top","small-large","large-small"], {"default": "large-small"}),
                 "nsfw_filter": ("BOOLEAN", {"default": True, "label_off": "OFF", "label_on": "ON"}),
                 "console_log_level": ([0, 1, 2], {"default": 1}),
+                "expression_restore": ("BOOLEAN", {"default": False, "label_off": "OFF", "label_on": "ON"}),
+                "expression_restore_strength": ("INT", {"default": 80, "min": 0, "max": 100, "step": 1}),
+                "expression_restore_areas": (["all", "upper-face", "lower-face"], {"default": "all"}),
             },
             "optional": {
                 "source_image": ("IMAGE",),
@@ -1856,7 +1879,7 @@ class ReActorFaceSwapInteractive:
     FUNCTION = "execute"
     CATEGORY = "ðŸŒŒ ReActor"
 
-    def execute(self, enabled, input_image, swap_model, facedetection, face_restore_model, face_restore_visibility, codeformer_weight, detect_gender_input, detect_gender_source, source_faces_index, faces_order, nsfw_filter, console_log_level, unique_id, source_image=None, face_model=None, face_boost=None):
+    def execute(self, enabled, input_image, swap_model, facedetection, face_restore_model, face_restore_visibility, codeformer_weight, detect_gender_input, detect_gender_source, source_faces_index, faces_order, nsfw_filter, console_log_level, unique_id, source_image=None, face_model=None, face_boost=None, expression_restore=False, expression_restore_strength=80, expression_restore_areas="all"):
         if not enabled:
             return (input_image, face_model, input_image)
 
@@ -1873,7 +1896,7 @@ class ReActorFaceSwapInteractive:
         if len(faces) == 0:
             logger.status("[ReActor Interactive] No faces detected in the image. Continuing without selection.")
             reactor_instance = reactor()
-            return reactor_instance.execute(enabled, input_image, swap_model, detect_gender_source, detect_gender_input, source_faces_index, "0", nsfw_filter, console_log_level, face_restore_model, face_restore_visibility, codeformer_weight, facedetection, source_image, face_model, [faces_order, "large-small"], face_boost=face_boost)
+            return reactor_instance.execute(enabled, input_image, swap_model, detect_gender_source, detect_gender_input, source_faces_index, "0", nsfw_filter, console_log_level, face_restore_model, face_restore_visibility, codeformer_weight, facedetection, source_image, face_model, [faces_order, "large-small"], face_boost=face_boost, expression_restore=expression_restore, expression_restore_strength=expression_restore_strength, expression_restore_areas=expression_restore_areas)
 
         faces = sort_by_order(faces, faces_order)
 
@@ -1931,7 +1954,7 @@ class ReActorFaceSwapInteractive:
         logger.status(f"[ReActor Interactive] Proceeding with face swap for indices: {input_faces_index_str}")
 
         reactor_instance = reactor()
-        return reactor_instance.execute(enabled, input_image, swap_model, detect_gender_source, detect_gender_input, source_faces_index, input_faces_index_str, nsfw_filter, console_log_level, face_restore_model, face_restore_visibility, codeformer_weight, facedetection, source_image, face_model, [faces_order, "large-small"], face_boost=face_boost)
+        return reactor_instance.execute(enabled, input_image, swap_model, detect_gender_source, detect_gender_input, source_faces_index, input_faces_index_str, nsfw_filter, console_log_level, face_restore_model, face_restore_visibility, codeformer_weight, facedetection, source_image, face_model, [faces_order, "large-small"], face_boost=face_boost, expression_restore=expression_restore, expression_restore_strength=expression_restore_strength, expression_restore_areas=expression_restore_areas)
 
 
 NODE_CLASS_MAPPINGS = {

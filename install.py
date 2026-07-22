@@ -69,21 +69,24 @@ with open(req_file) as file:
         ort = "onnxruntime-gpu"
         import torch
         cuda_version = None
+        torch_version = pv.parse(torch.__version__.split("+")[0])
         if torch.cuda.is_available():
             cuda_version = torch.version.cuda
             print(f"CUDA {cuda_version}")
         elif torch.backends.mps.is_available() or hasattr(torch,'dml') or hasattr(torch,'privateuseone'):
             ort = "onnxruntime"
-        if cuda_version is not None and float(cuda_version)>=12 and torch.torch_version.__version__ <= "2.2.0": # CU12.x and torch<=2.2.0
+        if cuda_version is not None and float(cuda_version)>=12 and torch_version <= pv.parse("2.2.0"): # CU12.x and torch<=2.2.0
             print(f"Torch: {torch.torch_version.__version__}")
             if not is_installed(ort,"1.17.0",False):
                 run_pip_uninstall("onnxruntime")
                 run_pip(ort,"--no-deps","--extra-index-url", "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/")
-        elif cuda_version is not None and float(cuda_version)>=12 and torch.torch_version.__version__ >= "2.4.0" : # CU12.x and latest torch
+        elif cuda_version is not None and float(cuda_version)>=12 and torch_version >= pv.parse("2.4.0") : # CU12.x and latest torch
             print(f"Torch: {torch.torch_version.__version__}")
-            if not is_installed(ort,"1.20.1",False): # latest ort-gpu
+            cpu_ort_installed = is_installed("onnxruntime")
+            if cpu_ort_installed:
                 run_pip_uninstall("onnxruntime")
-                run_pip(ort,"-U","--no-deps")
+            if cpu_ort_installed or not is_installed(ort,"1.20.1",False): # latest ort-gpu
+                run_pip(ort,"-U","--force-reinstall","--no-deps")
         elif not is_installed(ort,"1.16.1",False):
             if ort == "onnxruntime-gpu":
                 run_pip_uninstall("onnxruntime")

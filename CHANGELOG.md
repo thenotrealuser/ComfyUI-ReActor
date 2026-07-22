@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0-alpha3 - 2026-07-22
+
+- Added an integrated LivePortrait Expression Restorer to the standard, options-based, and interactive face swap nodes.
+- Added `expression_restore`, `expression_restore_strength`, and `expression_restore_areas` controls.
+- Restores the original target expression after face swap and before optional CodeFormer/GFPGAN restoration.
+- Added automatic download and cached ONNX sessions for the LivePortrait feature extractor, motion extractor, and generator.
+- Added CUDA, CoreML, ROCm, DirectML, and CPU ONNXRuntime provider selection with safe fallback to the swapped image on failure.
+- Added Expression Restorer cleanup to the `ReActorUnload` node.
+- Preserved existing workflow widget positions and positional Python call compatibility.
+- Fixed the interactive selector when execution reaches it while another ComfyUI workflow tab is active.
+- Added pending-selection recovery after tab changes, browser focus changes, visibility changes, and WebSocket reconnection.
+- Fixed ONNXRuntime installation so CUDA systems remove the conflicting CPU package and force-reinstall `onnxruntime-gpu`.
+- Fixed semantic Torch version checks for versions such as `2.12.0`.
+
 ## 2026-05-29
 
 - Reimplemented `ReActorFaceSwapInteractive` after updating the upstream project.

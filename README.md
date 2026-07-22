@@ -2,7 +2,7 @@
 
   <img src="https://github.com/Gourieff/Assets/raw/main/sd-webui-reactor/ReActor_logo_NEW_EN.png?raw=true" alt="logo" width="180px"/>
 
-  ![Version](https://img.shields.io/badge/node_version-0.7.0_alpha2-lightgreen?style=for-the-badge&labelColor=darkgreen)
+  ![Version](https://img.shields.io/badge/node_version-0.7.0_alpha3-lightgreen?style=for-the-badge&labelColor=darkgreen)
 
   <a href="https://boosty.to/artgourieff" target="_blank">
     <img src="https://lovemet.ru/img/boosty.jpg" width="108" alt="Support Me on Boosty"/>
@@ -46,15 +46,25 @@
 
 ## What's new in the latest update
 
-*only on this fork:*
+*Only on this fork:*
 
-_in this fork, you can enable or disable SFW filter
-and you can add a new node who can select faces detected before swap!
-and you can select multiple faces to swap too!_
-and now you can select faces by numbers with a preview!
+- Integrated LivePortrait Expression Restorer inside the face swap nodes.
+- Interactive target-face selection with full-scene preview, bounding boxes, and multi-select.
+- Interactive selection survives workflow tab changes, browser focus changes, and WebSocket reconnection.
+- Optional SFW/NSFW filter toggle.
+- Improved ONNXRuntime GPU conflict handling on CUDA installations.
 
 <img width="369" height="670" alt="Captura de tela 2026-06-12 115957" src="https://github.com/user-attachments/assets/28a2d7c3-4c46-49f7-bdac-3f609fae3a84" />
 
+
+### 0.7.0 <sub><sup>ALPHA3</sup></sub>
+
+- Added optional expression restoration directly after face swap using LivePortrait.
+- Available controls: `expression_restore`, `expression_restore_strength`, and `expression_restore_areas`.
+- Expression restoration runs before optional CodeFormer/GFPGAN face restoration.
+- LivePortrait ONNX models are downloaded automatically to `ComfyUI/models/reactor/expression_restorer`.
+- Added reliable interactive face-selector recovery when switching ComfyUI workflow tabs.
+- Fixed recurring CPU ONNXRuntime replacement on CUDA systems and corrected Torch version detection.
 
 ### 0.7.0 <sub><sup>ALPHA2</sup></sub>
 
